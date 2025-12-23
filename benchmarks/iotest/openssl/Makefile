@@ -12,7 +12,7 @@ run-server:
 
 run-client:
 	@echo "--- Measuring Native I/O Throughput ---"
-	@for size in 1KB 64KB 256KB 1MB 16MB; do \
+	@for size in 1KB 2KB 4KB 8KB 16KB 32KB 64KB 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB; do \
 		echo "\n>>> Testing File Size: $$size"; \
 		openssl s_time -connect localhost:$(PORT) -www /files/$$size.bin -time 10 -new; \
 	done
