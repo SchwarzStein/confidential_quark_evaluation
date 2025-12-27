@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1.4
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y build-essential \
+    make cmake bash git flex bison lsb-release curl gpg jq
+RUN curl -fsSL https://packages.redis.io/gpg \
+    | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" \
+    | tee /etc/apt/sources.list.d/redis.list && \
+    apt-get update && apt-get install -y memtier-benchmark
+
+WORKDIR /home
+
+COPY <<'EOF' /home/benchmark.sh
+#!/bin/bash
+
+#sanity check
+LOGDIR=/home/logs
+if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
+echo "RUNTIME:${RUNTIME}"
+echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - RAND:${RAND}
+- LOGDIR:${LOGDIR} - SET:${SETRATIO}"
+if [ -z "${RAND}" ]; then RAND=--randomize; fi
+CONNECT="-h ${SHNAME} -p 11211 --protocol=memcache_text"
+
+##check server is ready
+TRIES=1000
+while [ ${TRIES} -gt 0 ]; do
+    ALIVE=$(memtier_benchmark ${CONNECT} 2>&1)
+    if ! grep -qE "Name or service|Connection refused" <<< "${ALIVE}"; then
+        echo "Ping: ${ALIVE}"
+        break
+    fi
+    TRIES=$((TRIES - 1))
+    sleep 1
+done
+
+if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
+
+for i in ${SETRATIO}; do
+    TEMPLOG=${LOGDIR}/${i}.json
+    RESFORMAT="--json-out-file=${TEMPLOG}"
+    TEMPCSV=${LOGDIR}/${RUNTIME}_${i}.csv
+    TESTS="${RAND} -c ${CLN} --ratio=${i}:10"
+    memtier_benchmark ${CONNECT} ${TESTS} ${RESFORMAT}
+    jq -r --arg runtime "${RUNTIME}" '
+        ["test",$runtime],
+        ["SET", ."ALL STATS".Sets["Ops/sec"]],
+        ["GET", ."ALL STATS".Gets["Ops/sec"]]
+        | @csv
+    ' ${TEMPLOG} > ${TEMPCSV}
+    rm ${TEMPLOG}
+done
+EOF
+
+RUN chmod +x /home/benchmark.sh
+
+CMD ["/bin/bash", "/home/benchmark.sh"]
