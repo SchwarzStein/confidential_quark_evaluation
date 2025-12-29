@@ -55,7 +55,7 @@ run-server:
       		echo "Docker with runtime:runc";          \
 	fi;                                               \
 	docker run -d --name $(SRV_CONTAINER_NAME) \
-		--cpus=2 ${RUNTIMEARG} ${SRVARG} \
+		--cpus=2 $$RUNTIMEARG $$SRVARG \
 		--network $(TEST_NETWORK) $(IMAGE)
 
 run-clients:
