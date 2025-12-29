@@ -31,19 +31,27 @@ done
 
 if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
 
+RUNS=300
 for i in ${CLN}; do
     CSV=${LOGDIR}/${RUNTIME}_${i}.csv
     TEST="-n ${REQS} -c ${i}"
-    ab ${TEST} ${CONNECT} | \
-    awk -v rt="${RUNTIME}" '
-    /Requests per second/ {
+
+    SUM=0
+    for((R=0; R<RUNS; R++)); do
+        RPS=$(ab ${TEST} ${CONNECT} | \
+              awk '/Requests per second/ {print $4}')
+        SUM=$(awk -v S="${SUM}" -v V="${RPS}" 'BEGIN {print S+V}')
+    done
+
+    AVG=$(awk -v S="${SUM}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+    awk -v rt="${RUNTIME}" -v avg="${AVG}" '
+    BEGIN {
         print "test," rt
-        print "GET," $4
+        print "GET," avg
     }' > ${CSV}
 done
 EOF
 
 RUN chmod +x /home/benchmark.sh
 
-#CMD ["/bin/bash", "/home/benchmark.sh"]
-CMD ["/bin/bash"]
+CMD ["/bin/bash", "/home/benchmark.sh"]

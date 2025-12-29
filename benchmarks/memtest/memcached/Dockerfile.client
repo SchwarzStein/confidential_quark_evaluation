@@ -7,7 +7,7 @@ RUN curl -fsSL https://packages.redis.io/gpg \
     | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" \
     | tee /etc/apt/sources.list.d/redis.list && \
-    apt-get update && apt-get install -y memtier-benchmark
+    apt-get update && apt-get install -y memtier-benchmark vim
 
 WORKDIR /home
 
@@ -37,19 +37,35 @@ done
 
 if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
 
+RUNS=300
 for i in ${SETRATIO}; do
-    TEMPLOG=${LOGDIR}/${i}.json
-    RESFORMAT="--json-out-file=${TEMPLOG}"
-    TEMPCSV=${LOGDIR}/${RUNTIME}_${i}.csv
-    TESTS="${RAND} -c ${CLN} --ratio=${i}:10"
-    memtier_benchmark ${CONNECT} ${TESTS} ${RESFORMAT}
-    jq -r --arg runtime "${RUNTIME}" '
-        ["test",$runtime],
-        ["SET", ."ALL STATS".Sets["Ops/sec"]],
-        ["GET", ."ALL STATS".Gets["Ops/sec"]]
-        | @csv
-    ' ${TEMPLOG} > ${TEMPCSV}
-    rm ${TEMPLOG}
+    GETS=0
+    SETS=0
+    for((R=0; R<RUNS; R++)); do
+        TEMPLOG=${LOGDIR}/${i}.json
+        RESFORMAT="--json-out-file=${TEMPLOG}"
+        TESTS="${RAND} -c ${CLN} --ratio=${i}:10"
+
+        memtier_benchmark ${CONNECT} ${TESTS} ${RESFORMAT}
+
+        GETOPS=$(jq -r '."ALL STATS".Gets["Ops/sec"]' "${TEMPLOG}")
+        SETOPS=$(jq -r '."ALL STATS".Sets["Ops/sec"]' "${TEMPLOG}")
+
+        GETS=$(awk -v S="${GETS}" -v G="${GETOPS}" 'BEGIN {print S+G}')
+        SETS=$(awk -v S="${SETS}" -v V="${SETOPS}" 'BEGIN {print S+V}')
+
+        rm ${TEMPLOG}
+    done
+
+    AVG_GETS=$(awk -v S="${GETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+    AVG_SETS=$(awk -v S="${SETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+    CSV=${LOGDIR}/${RUNTIME}_${i}.csv
+    awk -v rt="${RUNTIME}" -v avgs="${AVG_SETS}" -v avgg="${AVG_GETS}" '
+    BEGIN {
+        print "test," rt
+        print "SET," avgs
+        print "GET," avgg
+    }' > ${CSV}
 done
 EOF
 

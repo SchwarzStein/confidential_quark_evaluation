@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.4
 FROM redis:8.0
 
+RUN apt-get update && apt-get install -y gawk vim
+
 WORKDIR /home
 
 COPY <<'EOF' /home/benchmark.sh
@@ -28,12 +30,30 @@ while [ ${TRIES} -gt 0 ]; do
     TRIES=$((TRIES - 1))
     sleep 1
 done
-RESULT=$(redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} | \
-        awk -F',' '{ print $1 "," $2}')
-printf '%s\n' "${RESULT}" >> tmp
-awk -F',' -v new="$RUNTIME" 'NR==1 {$2="\"" new "\""} {print}' OFS=',' \
-tmp > _tmp && cp _tmp "${LOGFILE}"
-rm tmp _tmp
+RUNS=300
+TMP=/home/logs/tmp_res.csv
+for((R=0; R<RUNS; R++)); do
+    redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} | \
+    awk -F',' '
+        NR>1 {
+            gsub(/"/,"",$1)
+            gsub(/"/,"",$2)
+            print $1 "," $2
+        }
+    ' >> ${TMP}
+done
+
+awk -F',' -v rt="${RUNTIME}" -v N="${RUNS}" '
+    {
+        sum[$1] += $2
+    }
+    END {
+        print "test," rt
+        for (k in sum) {
+            printf "%s,%.3f\n", k, sum[k] / N
+        }
+    } ' ${TMP} > ${LOGFILE}
+rm ${TMP}
 EOF
 
 RUN chmod +x /home/benchmark.sh
