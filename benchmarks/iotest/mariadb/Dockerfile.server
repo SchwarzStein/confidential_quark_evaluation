@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1.4
+FROM mariadb:11.3
+
+COPY <<'EOF' /etc/mysql/conf.d/mdb.cnf
+[mysqld]
+innodb_buffer_pool_size=256M
+innodb_flush_log_at_trx_commit=1
+sync_binlog=1
+innodb_log_file_size=128M
+innodb_flush_method=fsync
+max_connections=200
+EOF

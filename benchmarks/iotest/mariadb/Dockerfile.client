@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1.4
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y build-essential \
+    sysbench mariadb-client vim
+
+WORKDIR /home
+
+COPY <<'EOF' /home/benchmark.sh
+#!/bin/bash
+
+#sanity check
+LOGDIR=/home/logs
+if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
+echo "RUNTIME:${RUNTIME}"
+echo "Arguments: SRV:${SHNAME} - #THREADS:${THRDS} - TABLES:${TABS}
+- TAB_SIZE:${TBSIZE} - WLOAD:${WRK} - LOGDIR:${LOGDIR}"
+
+##check server is ready
+TRIES=1000
+until mysqladmin ping -h "${SHNAME}" -u "${MYSQL_USER}" \
+                        -p "${MYSQL_PASSWORD}" --silent
+do
+    echo "Waiting for DB connection at ${SHNAME} ..."
+    if [ ${TRIES} -eq 0 ];
+        then echo "Server not found" && exit 1
+    fi
+    sleep 1
+done
+
+sysbench oltp_read_write \
+    --db-driver=mysql \
+    --mysql-host=${SHNAME} \
+    --mysql-user=${MYSQL_USER} \
+    --mysql-password=${MYSQL_PASSWORD} \
+    --mysql-name=${MYSQL_DATABASE} \
+    --tables=${TABS} --tables-size=${TBSIZE} \
+    prepare
+
+RUNS=300
+CSV=${LOGDIR}/${RUNTIME}_benchmark.csv
+echo "test,threads,avg_tps" > ${CSV}
+for w in ${WRK}; do
+    for t in ${THRDS}; do
+        SUM=0
+        for((r=0; r<RUNS; r++)); do
+            TPS=$(sysbench oltp_${wrk}
+                 --db-driver=mysql \
+                 --mysql-host=${SHNAME} \
+                 --mysql-user=${MYSQL_USER} \
+                 --mysql-password=${MYSQL_PASSWORD} \
+                 --mysql-name=${MYSQL_DATABASE} \
+                 --threads="${t}" --time=20 run \
+                 awk '/transactions:/ {print $2}')
+            SUM=$(awk -v S="${SUM}" -v T="${TPS}" 'BEGIN {print S+T}')
+        done
+        AVG=$(awk -v S="${SUM}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+        echo "${w},${t},${AVG}" >> ${CSV}
+    done
+done
+EOF
+
+RUN chmod +x /home/benchmark.sh
+
+CMD ["/bin/bash", "/home/benchmark.sh"]
