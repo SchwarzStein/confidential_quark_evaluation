@@ -38,7 +38,7 @@ TABLES	     := 20
 TABLE_SIZE   ?= 500000
 ARGS 	      = -e SHNAME=$(SRV_HOSTNAME) -e THRDS="$(THREADS)" \
 		-e TABS=$(TABLES) -e TBSIZE=$(TABLE_SIZE) \
-		-e WRK="${WRKLOAD}"
+		-e WRK="${WRKLOAD}" \
 		-e RUNTIME=$(SRVRNT) $(DBUSERARG)
 
 build:
@@ -72,7 +72,7 @@ run-clients:
 		-v ./logs:/home/logs $(ARGS) \
 		--name $(CLT_CONTAINER_NAME) $(CLT_CONTAINER_NAME)
 	sudo chown -R ${USER}:${USER} ./logs
-	@echo "Done. Results saved to ./logs: format RUNTIME_CLIENTS.csv"
+	@echo "Done. Results saved to ./logs: format RUNTIME_benchmark.csv"
 
 clean:
 	docker stop $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true
