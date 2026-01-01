@@ -1,9 +1,12 @@
 SHELL := /bin/bash
+MKFL		:= $(abspath $(lastword $(MAKEFILE_LIST)))
+ROOT		:= $(realpath $(patsubst %/,%,$(dir $(MKFL))))
 # Variables
 IMAGE_NAME 	:= ubuntu
 IMAGE_VERSION   := 22.04
 IMAGE           := $(IMAGE_NAME):$(IMAGE_VERSION)
 SRV_CONTAINER_NAME  ?= fio_benchmark
+LOGDIR		    := $(ROOT)/logs
 #
 # NOTE: quark 		- our confidential compute Quark
 # 	ncc-quark 	- Quark with normal, non-CC, VM
@@ -52,10 +55,10 @@ run-server:
 	fi;                                               \
 	echo "Starting test container" ;                  \
 	docker run -it --name $(SRV_CONTAINER_NAME) \
-		-v ./logs:/home/logs $(TEST_ARGS) \
+		-v $(LOGDIR):/home/logs $(TEST_ARGS) \
 		--cpus=2 $$RUNTIMEARG $$SRVARG \
 		$(SRV_CONTAINER_NAME);           \
-	sudo chown -R ${USER}:${USER} ./logs;
+	sudo chown -R ${USER}:${USER} $(LOGDIR);
 	@echo "Done. Results saved to ./logs: format RUNTIME_ACTION.csv"
 
 clean:
@@ -64,6 +67,6 @@ clean:
 
 purge:
 	${MAKE} clean
-	docker rmi $(SRV_CONTAINER_NAME)
+	docker rmi $(SRV_CONTAINER_NAME) || true
 
 .PHONY: build run-server clean purge

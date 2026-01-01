@@ -1,4 +1,6 @@
 SHELL := /bin/bash
+MKFL		:= $(abspath $(lastword $(MAKEFILE_LIST)))
+ROOT		:= $(realpath $(patsubst %/,%,$(dir $(MKFL))))
 # Variables
 IMAGE_NAME 	:= mariadb
 IMAGE_VERSION   := 11.3
@@ -6,6 +8,7 @@ IMAGE           := $(IMAGE_NAME):$(IMAGE_VERSION)
 CLT_CONTAINER_NAME  := $(IMAGE_NAME)_client
 SRV_CONTAINER_NAME  := $(IMAGE_NAME)_benchmark
 TEST_NETWORK	    := $(IMAGE_NAME)-benchmark-net
+LOGDIR		    := $(ROOT)/logs
 #
 # NOTE: quark 		- our confidential compute Quark
 # 	ncc-quark 	- Quark with normal, non-CC, VM
@@ -67,11 +70,11 @@ run-server:
 
 run-clients:
 	@echo "Starting client container"
-	mkdir -p ./logs
+	mkdir -p $(LOGDIR)
 	docker run -it --network $(TEST_NETWORK) \
-		-v ./logs:/home/logs $(ARGS) \
+		-v $(LOGDIR):/home/logs $(ARGS) \
 		--name $(CLT_CONTAINER_NAME) $(CLT_CONTAINER_NAME)
-	sudo chown -R ${USER}:${USER} ./logs
+	sudo chown -R ${USER}:${USER} $(LOGDIR)
 	@echo "Done. Results saved to ./logs: format RUNTIME_benchmark.csv"
 
 clean:
@@ -81,6 +84,6 @@ clean:
 
 purge:
 	${MAKE} clean
-	docker rmi $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME)
+	docker rmi $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true
 
 .PHONY: build run-server run-clients clean purge
