@@ -6,16 +6,15 @@ MEMTESTS := $(ROOT)/benchmarks/memtest
 IOTESTS	 := $(ROOT)/benchmarks/iotest
 MEMTEST	 := redis memcached
 IOTEST	 := fio nginx mariadb openssl
+
 RUNTIME  ?= quark
 
-.PHONY: $(addprefix build-mem-,$(MEMTEST)) \
-	$(addprefix build-io-,$(IOTEST))   \
-	$(addprefix test-mem-,$(MEMTEST))  \
-	$(addprefix test-io-,$(IOTEST))    \
-	$(addprefix clean-mem-,$(MEMTEST)) \
-	$(addprefix clean-io-,$(IOTEST))   \
-	$(addprefix purge-mem-,$(MEMTEST)) \
-	$(addprefix purge-io-,$(IOTEST))
+BUILD := $(ROOT)/build
+QUARK := $(BUILD)/quark
+RUNSC := $(BUILD)/runsc
+
+.PHONY: build-mem-% build-io-% test-io-% test-mem-% \
+	clean-mem-% clean-io-% purge-mem-% purge-io-%
 
 build-mem-%:
 	$(MAKE) -C $(MEMTESTS)/$* build
