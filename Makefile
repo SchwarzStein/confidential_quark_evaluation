@@ -21,6 +21,8 @@ install:
 	@echo "Install the test binaries: quark runsc(gVisor)"
 	@echo "A) Install runsc(gVisor)"
 	$(MAKE) -C $(RUNSC) install
+	@echo "B) Install quark"
+	$(MAKE) -C $(QUARK) install
 
 build-mem-%:
 	$(MAKE) -C $(MEMTESTS)/$* build
