@@ -1,0 +1,74 @@
+# syntax=docker/dockerfile:1.4
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y build-essential \
+    make cmake bash git flex bison lsb-release curl gpg jq
+RUN curl -fsSL https://packages.redis.io/gpg \
+    | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" \
+    | tee /etc/apt/sources.list.d/redis.list && \
+    apt-get update && apt-get install -y memtier-benchmark vim
+
+WORKDIR /home
+
+COPY <<'EOF' /home/benchmark.sh
+#!/bin/bash
+
+#sanity check
+LOGDIR=/home/logs
+if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
+echo "RUNTIME:${RUNTIME}"
+echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - RAND:${RAND}
+- LOGDIR:${LOGDIR} - SET:${SETRATIO}"
+if [ -z "${RAND}" ]; then RAND=--randomize; fi
+CONNECT="-h ${SHNAME} -p 11211 --protocol=memcache_text"
+
+##check server is ready
+TRIES=1000
+while [ ${TRIES} -gt 0 ]; do
+    ALIVE=$(memtier_benchmark ${CONNECT} 2>&1)
+    if ! grep -qE "Name or service|Connection refused" <<< "${ALIVE}"; then
+        echo "Ping: ${ALIVE}"
+        break
+    fi
+    TRIES=$((TRIES - 1))
+    sleep 1
+done
+
+if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
+
+RUNS=300
+for i in ${SETRATIO}; do
+    GETS=0
+    SETS=0
+    for((R=0; R<RUNS; R++)); do
+        TEMPLOG=${LOGDIR}/${i}.json
+        RESFORMAT="--json-out-file=${TEMPLOG}"
+        TESTS="${RAND} -c ${CLN} --ratio=${i}:10"
+
+        memtier_benchmark ${CONNECT} ${TESTS} ${RESFORMAT}
+
+        GETOPS=$(jq -r '."ALL STATS".Gets["Ops/sec"]' "${TEMPLOG}")
+        SETOPS=$(jq -r '."ALL STATS".Sets["Ops/sec"]' "${TEMPLOG}")
+
+        GETS=$(awk -v S="${GETS}" -v G="${GETOPS}" 'BEGIN {print S+G}')
+        SETS=$(awk -v S="${SETS}" -v V="${SETOPS}" 'BEGIN {print S+V}')
+
+        rm ${TEMPLOG}
+    done
+
+    AVG_GETS=$(awk -v S="${GETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+    AVG_SETS=$(awk -v S="${SETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+    CSV=${LOGDIR}/${RUNTIME}_${i}.csv
+    awk -v rt="${RUNTIME}" -v avgs="${AVG_SETS}" -v avgg="${AVG_GETS}" '
+    BEGIN {
+        print "test," rt
+        print "SET," avgs
+        print "GET," avgg
+    }' > ${CSV}
+done
+EOF
+
+RUN chmod +x /home/benchmark.sh
+
+CMD ["/bin/bash", "/home/benchmark.sh"]

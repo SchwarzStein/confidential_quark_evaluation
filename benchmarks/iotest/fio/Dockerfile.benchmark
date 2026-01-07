@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.4
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y build-essential \
+    fio vim
+
+WORKDIR /home
+
+COPY <<'EOF' /home/benchmark.sh
+#!/bin/bash
+
+#sanity check
+LOGDIR=/home/logs
+if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
+echo "RUNTIME:${RUNTIME}"
+echo "Arguments: FILE_SIZE:${FSIZE} - #BSIZEs:${BSIZES} - OPS:${OPS}
+-LOOPS:${LOOP} - LOGDIR:${LOGDIR}"
+
+read -a BSIZE_ARRAY <<< "${BSIZES}"
+read -a OPS_ARRAY <<< "${OPS}"
+LOG=/home/logs/${RUNTIME}_fio_benchmark.csv
+{
+    printf "test"
+    for bs in "${BSIZE_ARRAY[@]}";do
+        printf ",%s" "${bs}"
+    done
+    printf "\n"
+} > "${LOG}"
+
+for op in "${OPS_ARRAY[@]}"; do
+    printf "%s" "${op}" >> ${LOG}
+    for bs in "${BSIZE_ARRAY[@]}"; do
+        RES=$(fio --name=test --rw="${op}" \
+            --bs="${bs}" --size="${FSIZE}" \
+            --numjobs=1 --iodepth=1 \
+            --runtime=10 --time_based \
+            --loops="${LOOP}" --group_reporting \
+            2>/dev/null | \
+            awk '/iops/ {
+		    sub(/.*avg=/,"",$0)
+		    sub(/,.*/,"",$0)
+		    print $0; exit}')
+        printf ",%s" "${RES}" >> ${LOG}
+    done
+    printf "\n" >> ${LOG}
+done
+EOF
+
+RUN chmod +x /home/benchmark.sh
+
+CMD ["/bin/bash", "/home/benchmark.sh"]

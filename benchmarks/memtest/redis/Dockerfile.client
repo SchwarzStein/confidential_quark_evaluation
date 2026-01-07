@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.4
+FROM redis:8.0
+
+RUN apt-get update && apt-get install -y gawk vim
+
+WORKDIR /home
+
+COPY <<'EOF' /home/benchmark.sh
+#!/bin/bash
+
+#sanity check
+if [ -n "${RUNTIME}" ]; then RUNTIME=runc; fi
+echo "RUNTIME:${RUNTIME}"
+echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - #REQs:${REQS} - LOG:/home/logs/${LOG}"
+TESTS="-t set,get,incr,lpush,rpush,lpop,rpop,sadd,hset,spop,zadd"
+CONNECT="-h ${SHNAME} -p 6379"
+LAST="-c ${CLN} -n ${REQS}"
+FORMAT="--csv"
+LOGFILE=/home/logs/${LOG}
+
+#check server is ready
+PING="-c 1 -n 1 -t ping --csv"
+TRIES=1000
+while [ ${TRIES} -gt 0 ]; do
+    ALIVE=$(redis-benchmark ${CONNECT} ${PING} 2>&1)
+    if ! grep -q "Could not" <<< "${ALIVE}"; then
+        echo "Ping: ${ALIVE}"
+        break
+    fi
+    TRIES=$((TRIES - 1))
+    sleep 1
+done
+RUNS=300
+TMP=/home/logs/tmp_res.csv
+for((R=0; R<RUNS; R++)); do
+    redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} | \
+    awk -F',' '
+        NR>1 {
+            gsub(/"/,"",$1)
+            gsub(/"/,"",$2)
+            print $1 "," $2
+        }
+    ' >> ${TMP}
+done
+
+awk -F',' -v rt="${RUNTIME}" -v N="${RUNS}" '
+    {
+        sum[$1] += $2
+    }
+    END {
+        print "test," rt
+        for (k in sum) {
+            printf "%s,%.3f\n", k, sum[k] / N
+        }
+    } ' ${TMP} > ${LOGFILE}
+rm ${TMP}
+EOF
+
+RUN chmod +x /home/benchmark.sh
+
+CMD ["/bin/bash", "/home/benchmark.sh"]
