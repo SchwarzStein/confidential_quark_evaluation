@@ -14,11 +14,19 @@ QUARK := $(BUILD)/quark
 
 .PHONY: build-mem-% build-io-% test-io-% test-mem-% \
 	clean-mem-% clean-io-% purge-mem-% purge-io-% \
-	install
+	install-testbin clean-testbin purge-testbin
 
-install:
+install-testbin:
 	@echo "Install the test binaries: quark"
 	$(MAKE) -C $(QUARK) install
+
+clean-testbin:
+	@echo "Remove the test binaries: quark"
+	$(MAKE) -C $(QUARK) clean
+
+purge-testbin:
+	@echo "Remove the test binaries: quark and build image"
+	$(MAKE) -C $(QUARK) purge
 
 build-mem-%:
 	$(MAKE) -C $(MEMTESTS)/$* build
