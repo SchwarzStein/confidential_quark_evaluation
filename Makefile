@@ -11,17 +11,13 @@ RUNTIME  ?= quark
 
 BUILD := $(ROOT)/build
 QUARK := $(BUILD)/quark
-RUNSC := $(BUILD)/runsc
 
 .PHONY: build-mem-% build-io-% test-io-% test-mem-% \
 	clean-mem-% clean-io-% purge-mem-% purge-io-% \
 	install
 
 install:
-	@echo "Install the test binaries: quark runsc(gVisor)"
-	@echo "A) Install runsc(gVisor)"
-	$(MAKE) -C $(RUNSC) install
-	@echo "B) Install quark"
+	@echo "Install the test binaries: quark"
 	$(MAKE) -C $(QUARK) install
 
 build-mem-%:
