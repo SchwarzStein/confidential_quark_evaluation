@@ -4,9 +4,9 @@ ROOT		:= $(realpath $(patsubst %/,%,$(dir $(MKFL))))
 # Variables
 IMAGE_NAME 	:= nginx
 IMAGE_VERSION   := 1.29.0
-IMAGE           := $(IMAGE_NAME):$(IMAGE_VERSION)
+IMAGE           := $(IMAGE_NAME)_benchmark
 CLT_CONTAINER_NAME  := $(IMAGE_NAME)_client
-SRV_CONTAINER_NAME  ?= $(IMAGE_NAME)_benchmark
+SRV_CONTAINER_NAME  ?= $(IMAGE_NAME)-benchmark
 TEST_NETWORK	    := $(IMAGE_NAME)-benchmark-net
 LOGDIR		    := $(ROOT)/logs
 #
@@ -31,13 +31,14 @@ else
 SRVRNT = $(RUNTIME)
 endif
 SRV_HOSTNAME := $(SRV_CONTAINER_NAME)
-CLIENTS      := 10 40 80 120
-REQUESTS     ?= 100000
-ARGS 	      = -e SHNAME=$(SRV_HOSTNAME) -e CLN="$(CLIENTS)"  \
-		-e REQS=$(REQUESTS) -e RUNTIME=$(SRVRNT)
+CONNECTIONS  := 200 400 600 800 1000
+THREADS      ?= 10
+ARGS 	      = -e SHNAME=$(SRV_HOSTNAME) -e THR=$(THREADS)  \
+		-e CON="$(CONNECTIONS)" -e RUNTIME=$(SRVRNT)
 
 build:
-	docker images | grep $(IMAGE_NAME) || docker pull $(IMAGE)
+	docker images | grep $(IMAGE) || \
+		DOCKER_BUILDKIT=1 docker build -t $(IMAGE) -f Dockerfile.server .
 	docker network ls | grep $(TEST_NETWORK) || docker network create $(TEST_NETWORK)
 	DOCKER_BUILDKIT=1 docker build -t $(CLT_CONTAINER_NAME) -f Dockerfile.client .
 
@@ -75,5 +76,6 @@ clean:
 purge:
 	${MAKE} clean
 	docker rmi $(CLT_CONTAINER_NAME) || true
+	docker rmi $(IMAGE) || true
 
 .PHONY: build run-server run-clients clean purge

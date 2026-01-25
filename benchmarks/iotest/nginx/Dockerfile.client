@@ -2,7 +2,7 @@
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y build-essential \
-    apache2-utils vim
+    wrk vim
 
 WORKDIR /home
 
@@ -13,33 +13,32 @@ COPY <<'EOF' /home/benchmark.sh
 LOGDIR=/home/logs
 if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
 echo "RUNTIME:${RUNTIME}"
-echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - REQs:${REQS}
+echo "Arguments: SRV:${SHNAME} - #THREADS:${THR} - #CONNECTIONS:${CON}
 - LOGDIR:${LOGDIR}"
-CONNECT="http://${SHNAME}/index.html"
+CONNECT="http://${SHNAME}/tfile.html"
 
 ##check server is ready
 TRIES=1000
 while [ ${TRIES} -gt 0 ]; do
-    ALIVE=$(ab -c 1 -n 1 ${CONNECT} 2>&1)
-    if ! grep -qE "ab: invalid URL" <<< "${ALIVE}"; then
-        echo "Ping: ${ALIVE}"
+    if wrk -t1 -c1 -d1s "${CONNECT}" > /dev/null 2>&1; then
+        echo "Nginx Server - Ready"
         break
     fi
     TRIES=$((TRIES - 1))
     sleep 1
 done
 
-if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
+if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi
 
 RUNS=300
-for i in ${CLN}; do
+for i in ${CON}; do
     CSV=${LOGDIR}/${RUNTIME}_${i}.csv
-    TEST="-n ${REQS} -c ${i}"
+    TEST="-t${THR} -c${i} -d30s"
 
     SUM=0
     for((R=0; R<RUNS; R++)); do
-        RPS=$(ab ${TEST} ${CONNECT} | \
-              awk '/Requests per second/ {print $4}')
+        RPS=$(wrk ${TEST} ${CONNECT} | \
+              awk '/Requests\/sec/ {print $2}')
         SUM=$(awk -v S="${SUM}" -v V="${RPS}" 'BEGIN {print S+V}')
     done
 
