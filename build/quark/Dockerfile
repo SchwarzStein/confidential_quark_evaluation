@@ -47,8 +47,8 @@ COPY <<'EOF' ./build.sh
 #!/bin/bash
 
 ARCH=$(uname -a)
-B=quark_cc_tdx_snp_cca_base_update_safe_arm_intel
-git clone -b ${B} https://github.com/SchwarzStein/AToughBox.git
+BRANCH=quark_cc_at_tdx_snp_cca_base_rebase
+git clone -b ${BRANCH} https://github.com/SchwarzStein/AToughBox.git
 cd AToughBox
 if [[ "${ARCH}" == "aarch64" ]]; then
         make release
