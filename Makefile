@@ -36,14 +36,14 @@ build-io-%:
 
 test-mem-%:
 	$(MAKE) -C $(MEMTESTS)/$* run-server RUNTIME=$(RUNTIME)
-	$(MAKE) -C $(MEMTESTS)/$* run-client RUNTIME=$(RUNTIME)
+	$(MAKE) -C $(MEMTESTS)/$* run-clients RUNTIME=$(RUNTIME)
 
 test-io-%:
 	@if [[ "$*" == "fio" ]]; then \
 	$(MAKE) -C $(IOTESTS)/$* run-server RUNTIME=$(RUNTIME); \
 	else							\
 	$(MAKE) -C $(IOTESTS)/$* run-server RUNTIME=$(RUNTIME); \
-	$(MAKE) -C $(IOTESTS)/$* run-client RUNTIME=$(RUNTIME); \
+	$(MAKE) -C $(IOTESTS)/$* run-clients RUNTIME=$(RUNTIME); \
 	fi
 
 clean-mem-%:
