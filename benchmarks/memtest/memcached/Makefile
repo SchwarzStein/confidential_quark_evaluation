@@ -50,7 +50,7 @@ run-server:
 	else                                              \
       		echo "Provide required arguments"; exit 1;\
 	fi;                                               \
-	if [ -z "$(RUNTIME)" ]; then 			  \
+	if [ -n "$(RUNTIME)" ]; then 			  \
       		RUNTIMEARG="--runtime=$(RUNTIME)";        \
       		echo "Docker with runtime:$(RUNTIME)";    \
 	else						  \
@@ -58,7 +58,7 @@ run-server:
       		echo "Docker with runtime:runc";          \
 	fi;                                               \
 	docker run -d --name $(SRV_CONTAINER_NAME) \
-		--cpus=2 $$RUNTIMEARG $$SRVARG \
+		--cpus=30 $$RUNTIMEARG $$SRVARG \
 		--network $(TEST_NETWORK) $(IMAGE)
 
 run-clients:
@@ -69,6 +69,7 @@ run-clients:
 		--name $(CLT_CONTAINER_NAME) $(CLT_CONTAINER_NAME)
 	sudo chown -R ${USER}:${USER} $(LOGDIR)
 	@echo "Done. Results saved to ./logs: format RUNTIME_SETRATIO.csv"
+	docker stop $(SRV_CONTAINER_NAME)
 
 clean:
 	docker stop $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true

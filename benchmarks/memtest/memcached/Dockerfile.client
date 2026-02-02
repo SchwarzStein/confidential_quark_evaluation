@@ -19,7 +19,7 @@ LOGDIR=/home/logs
 if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
 echo "RUNTIME:${RUNTIME}"
 echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - RAND:${RAND}
-- LOGDIR:${LOGDIR} - SET:${SETRATIO}"
+- LOGDIR:${LOGDIR} - RATIO-SET:${SETRATIO}"
 if [ -z "${RAND}" ]; then RAND=--randomize; fi
 CONNECT="-h ${SHNAME} -p 11211 --protocol=memcache_text"
 
@@ -37,14 +37,15 @@ done
 
 if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
 
-RUNS=300
+RUNS=50
 for i in ${SETRATIO}; do
     GETS=0
     SETS=0
     for((R=0; R<RUNS; R++)); do
+        echo "Start RATIO: ${i} - Round: ${R}"
         TEMPLOG=${LOGDIR}/${i}.json
         RESFORMAT="--json-out-file=${TEMPLOG}"
-        TESTS="${RAND} -c ${CLN} --ratio=${i}:10"
+        TESTS="${RAND} -c ${CLN} -d 16384 --ratio=${i}:10"
 
         memtier_benchmark ${CONNECT} ${TESTS} ${RESFORMAT}
 
@@ -55,6 +56,7 @@ for i in ${SETRATIO}; do
         SETS=$(awk -v S="${SETS}" -v V="${SETOPS}" 'BEGIN {print S+V}')
 
         rm ${TEMPLOG}
+        echo "DONE RATIO: ${i} - Round: ${R}"
     done
 
     AVG_GETS=$(awk -v S="${GETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
