@@ -33,7 +33,7 @@ SRVRNT = $(RUNTIME)
 endif
 RESULTS_FILE    := $(SRVRNT)_benchmark_results.csv
 SRV_HOSTNAME := $(SRV_CONTAINER_NAME)
-CLIENTS      ?= 20
+CLIENTS      ?= 50
 REQUESTS     ?= 100000
 ARGS 	      = -e SHNAME=$(SRV_HOSTNAME) -e CLN=$(CLIENTS) \
 		-e REQS=$(REQUESTS) -e LOG=$(RESULTS_FILE)  \
@@ -58,7 +58,7 @@ run-server:
       		echo "Docker with runtime:runc";          \
 	fi;                                               \
 	docker run -d --name $(SRV_CONTAINER_NAME) \
-		--cpus=2 $$RUNTIMEARG $$SRVARG \
+		--cpus=30 $$RUNTIMEARG $$SRVARG \
 		--network $(TEST_NETWORK) $(IMAGE)
 
 run-clients:
@@ -69,6 +69,7 @@ run-clients:
 		-v $(LOGDIR):/home/logs $(ARGS) \
 		--name $(CLT_CONTAINER_NAME) $(CLT_CONTAINER_NAME)
 	@echo "Done. Results saved to $(RESULTS_FILE)"
+	docker stop $(SRV_CONTAINER_NAME)
 
 clean:
 	docker stop $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true

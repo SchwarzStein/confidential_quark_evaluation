@@ -9,12 +9,12 @@ COPY <<'EOF' /home/benchmark.sh
 #!/bin/bash
 
 #sanity check
-if [ -n "${RUNTIME}" ]; then RUNTIME=runc; fi
+if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
 echo "RUNTIME:${RUNTIME}"
 echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - #REQs:${REQS} - LOG:/home/logs/${LOG}"
-TESTS="-t set,get,incr,lpush,rpush,lpop,rpop,sadd,hset,spop,zadd"
+TESTS="-t set,get"
 CONNECT="-h ${SHNAME} -p 6379"
-LAST="-c ${CLN} -n ${REQS}"
+LAST="-c ${CLN} -n ${REQS} -d 16384"
 FORMAT="--csv"
 LOGFILE=/home/logs/${LOG}
 
@@ -30,9 +30,16 @@ while [ ${TRIES} -gt 0 ]; do
     TRIES=$((TRIES - 1))
     sleep 1
 done
-RUNS=300
+
+if [ "${TRIES}" -eq 0 ]; then
+        echo "Error: Redis not ALIVE"
+        exit 1
+fi
+
+RUNS=200
 TMP=/home/logs/tmp_res.csv
 for((R=0; R<RUNS; R++)); do
+    echo "Test Round:${R} - Start"
     redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} | \
     awk -F',' '
         NR>1 {
