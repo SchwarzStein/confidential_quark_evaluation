@@ -8,13 +8,12 @@ IMAGE           := $(IMAGE_NAME):$(IMAGE_VERSION)
 CLT_CONTAINER_NAME  := $(IMAGE_NAME)_client
 SRV_CONTAINER_NAME  := $(IMAGE_NAME)_benchmark
 TEST_NETWORK	    := $(IMAGE_NAME)-benchmark-net
-LOGDIR		    := $(ROOT)/logs
+LOGDIR		    := $(ROOT)/logs/${RNTLOG}
 #
 # NOTE: quark 		- our confidential compute Quark
-# 	ncc-quark 	- Quark with normal, non-CC, VM
-# 	emcc-quark 	- Quark with only SW-based memory isolation
-# 	...		- ...
+# 	quark-emcc 	- Quark with only SW-based memory isolation
 RUNTIME 	?= quark# Standart
+RNTLOG		?= emcc
 
 #
 # NOTE: it effects startup time but not performance
@@ -35,11 +34,12 @@ else
 SRVRNT = $(RUNTIME)
 endif
 SRV_HOSTNAME := $(SRV_CONTAINER_NAME)
-THREADS      := 1 4 8 16
+THREADS      := 4 8 16 32
+THRD 	     ?=
 WRKLOAD	     := read_only write_only
 TABLES	     := 20
-TABLE_SIZE   ?= 500000
-ARGS 	      = -e SHNAME=$(SRV_HOSTNAME) -e THRDS="$(THREADS)" \
+TABLE_SIZE   ?= 100000
+ARGS 	      = -e SHNAME=$(SRV_HOSTNAME) -e THRDS=$(THRD) \
 		-e TABS=$(TABLES) -e TBSIZE=$(TABLE_SIZE) \
 		-e WRK="${WRKLOAD}" \
 		-e RUNTIME=$(SRVRNT) $(DBUSERARG)
@@ -64,26 +64,44 @@ run-server:
       		echo "Docker with runtime:runc";          \
 	fi;                                               \
 	docker run -d --name $(SRV_CONTAINER_NAME) \
-		--cpus=2 $$RUNTIMEARG $$SRVARG \
+		--cpus=30 $$RUNTIMEARG $$SRVARG \
 		$(DBARG) --network $(TEST_NETWORK) \
 		$(SRV_CONTAINER_NAME)
 
 run-clients:
 	@echo "Starting client container"
-	mkdir -p $(LOGDIR)
 	docker run -it --network $(TEST_NETWORK) \
 		-v $(LOGDIR):/home/logs $(ARGS) \
 		--name $(CLT_CONTAINER_NAME) $(CLT_CONTAINER_NAME)
+
+run-test:
+	mkdir -p $(LOGDIR)
+	@for t in $(THREADS); do \
+		echo ">>> Start test with THREADS=$$t"; \
+		$(MAKE) run-server || exit 1;           \
+		$(MAKE) THRD=$$t run-clients || exit 1; \
+		$(MAKE) clean; \
+	done
 	sudo chown -R ${USER}:${USER} $(LOGDIR)
-	@echo "Done. Results saved to ./logs: format RUNTIME_benchmark.csv"
+	@echo "Done. Round results saved to $(LOGDIR): format THRD_RUNTIME_benchmark_results.csv"
+	@echo "Final resutls in:$(LOGDIR)/mariadb_$(RNTLOG)_benchmark_results.csv"
+	@resfile="$(LOGDIR)/mariadb_$(RNTLOG)_benchmark_results.csv"; \
+	echo "test,${RNTLOG}" > $$resfile; \
+	for t in $(THREADS); do \
+		file="$(LOGDIR)/$${t}_$(RUNTIME)_benchmark_results.csv"; \
+		rv=$$(awk -F, '/^read_only/ {print $$2}' $$file); \
+		wv=$$(awk -F, '/^write_only/ {print $$2}' $$file); \
+		echo "Read_$${t},$${rv}" >> $$resfile; \
+		echo "Write_$${t},$${wv}" >> $$resfile; \
+	done
 
 clean:
 	docker stop $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true
 	docker rm $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true
-	docker network rm -f $(TEST_NETWORK)
 
 purge:
 	${MAKE} clean
+	docker network rm -f $(TEST_NETWORK)
 	docker rmi $(SRV_CONTAINER_NAME) $(CLT_CONTAINER_NAME) || true
 
-.PHONY: build run-server run-clients clean purge
+.PHONY: build run-server run-clients clean purge run-test

@@ -3,7 +3,7 @@ MKFL		:= $(abspath $(lastword $(MAKEFILE_LIST)))
 ROOT		:= $(realpath $(patsubst %/,%,$(dir $(MKFL))))
 # Variables
 IMAGE_NAME 	:= ubuntu
-IMAGE_VERSION   := 22.04
+IMAGE_VERSION   := 20.04
 IMAGE           := $(IMAGE_NAME):$(IMAGE_VERSION)
 SRV_CONTAINER_NAME  ?= fio_benchmark
 LOGDIR		    := $(ROOT)/logs
@@ -28,10 +28,10 @@ SRVRNT	= runc
 else
 SRVRNT = $(RUNTIME)
 endif
-FILE_SIZE   ?= 16m
-BLOCK_SIZE  ?= 4k 8k 16k 1m 2m
+FILE_SIZE   ?= 100m
+BLOCK_SIZE  ?= 4k 64k 512k 2m
 OPERATION   ?= read write
-ITERATIONS  ?= 100
+ITERATIONS  ?= 5
 TEST_ARGS   := -e FSIZE=$(FILE_SIZE) -e BSIZES="$(BLOCK_SIZE)" \
 	     	-e OPS="$(OPERATION)" -e RUNTIME=$(SRVRNT) \
 	     	-e LOOP=$(ITERATIONS)
@@ -46,7 +46,7 @@ run-server:
 	else                                              \
       		echo "Provide required arguments"; exit 1;\
 	fi;                                               \
-	if [ -z "$(RUNTIME)" ]; then 			  \
+	if [ -n "$(RUNTIME)" ]; then 			  \
       		RUNTIMEARG="--runtime=$(RUNTIME)";        \
       		echo "Docker with runtime:$(RUNTIME)";    \
 	else						  \
@@ -56,7 +56,7 @@ run-server:
 	echo "Starting test container" ;                  \
 	docker run -it --name $(SRV_CONTAINER_NAME) \
 		-v $(LOGDIR):/home/logs $(TEST_ARGS) \
-		--cpus=2 $$RUNTIMEARG $$SRVARG \
+		--cpus=30 $$RUNTIMEARG $$SRVARG \
 		$(SRV_CONTAINER_NAME);           \
 	sudo chown -R ${USER}:${USER} $(LOGDIR);
 	@echo "Done. Results saved to ./logs: format RUNTIME_ACTION.csv"

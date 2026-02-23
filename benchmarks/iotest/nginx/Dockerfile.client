@@ -30,25 +30,50 @@ done
 
 if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi
 
-RUNS=300
-for i in ${CON}; do
-    CSV=${LOGDIR}/${RUNTIME}_${i}.csv
-    TEST="-t${THR} -c${i} -d30s"
+TEST="-t${THR} -c${CON} -d60s"
+#Warm-up
+wrk ${TEST} ${CONNECT} > /dev/null
+wrk ${TEST} ${CONNECT} > /dev/null
 
-    SUM=0
-    for((R=0; R<RUNS; R++)); do
-        RPS=$(wrk ${TEST} ${CONNECT} | \
-              awk '/Requests\/sec/ {print $2}')
-        SUM=$(awk -v S="${SUM}" -v V="${RPS}" 'BEGIN {print S+V}')
-    done
+RUNS=40
+CSV=${LOGDIR}/${CON}_${RUNTIME}_benchmark_results.csv
 
-    AVG=$(awk -v S="${SUM}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
-    awk -v rt="${RUNTIME}" -v avg="${AVG}" '
-    BEGIN {
-        print "test," rt
-        print "GET," avg
-    }' > ${CSV}
+SUM=0
+RUN_OK=0
+for((R=0; R<RUNS; R++)); do
+    echo "Test start - Run:${R}"
+    sleep 5
+    OPUT=$(wrk ${TEST} ${CONNECT} 2>&1)
+    RES=$?
+    if [ ${RES} -ne 0 ]; then
+          echo "Test wrk failed: ${RC} - ${OPUT}"
+          continue
+    fi
+
+    RPS=$(awk '/Requests\/sec/ {print $2}' <<< "${OPUT}")
+
+    if [[ -z "${RPS}" || ! "${RPS}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Test invalid RPS: ${RPS}"
+            continue
+    fi
+
+    SUM=$(awk -v S="${SUM}" -v V="${RPS}" 'BEGIN {print S+V}')
+    RUN_OK=$((RUN_OK + 1))
+
+    echo "Test end - Run:${R}"
 done
+
+if [ "${RUN_OK}" -lt 20 ]; then
+    echo "Error: not reached limit of successful runs(20)"
+    exit 1
+fi
+
+AVG=$(awk -v S="${SUM}" -v N="${RUN_OK}" 'BEGIN {printf "%.3f", S/N}')
+awk -v rt="${RUNTIME}" -v avg="${AVG}" '
+BEGIN {
+    print "test," rt
+    print "GET," avg
+}' > ${CSV}
 EOF
 
 RUN chmod +x /home/benchmark.sh

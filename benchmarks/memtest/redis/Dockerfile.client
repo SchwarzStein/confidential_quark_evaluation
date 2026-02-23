@@ -11,10 +11,10 @@ COPY <<'EOF' /home/benchmark.sh
 #sanity check
 if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
 echo "RUNTIME:${RUNTIME}"
-echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - #REQs:${REQS} - LOG:/home/logs/${LOG}"
+echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - #REQs:${REQS} - DATA_SIZE:${DSIZE}- LOG:/home/logs/${LOG}"
 TESTS="-t set,get"
 CONNECT="-h ${SHNAME} -p 6379"
-LAST="-c ${CLN} -n ${REQS} -d 16384"
+LAST="-c ${CLN} -n ${REQS} -d ${DSIZE}"
 FORMAT="--csv"
 LOGFILE=/home/logs/${LOG}
 
@@ -36,31 +36,37 @@ if [ "${TRIES}" -eq 0 ]; then
         exit 1
 fi
 
+#Warm up - discard result
+redis-benchmark ${CONNECT} ${TESTS} ${LAST} > /dev/null
+redis-benchmark ${CONNECT} ${TESTS} ${LAST} > /dev/null
+
 RUNS=200
 TMP=/home/logs/tmp_res.csv
 for((R=0; R<RUNS; R++)); do
     echo "Test Round:${R} - Start"
-    redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} | \
+    redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} 2>/dev/null | \
     awk -F',' '
         NR>1 {
             gsub(/"/,"",$1)
             gsub(/"/,"",$2)
-            print $1 "," $2
+            if ($2 ~ /^[0-9.]+$/)
+                print $1 "," $2
         }
     ' >> ${TMP}
 done
 
-awk -F',' -v rt="${RUNTIME}" -v N="${RUNS}" '
-    {
-        sum[$1] += $2
+awk -F',' -v rt="${RUNTIME}" '
+{
+    sum[$1] += $2
+    count[$1]++
+}
+END {
+    print "test," rt
+    for (k in sum) {
+        if (count[k] > 0)
+            printf "%s,%.3f\n", k, sum[k] / count[k]
     }
-    END {
-        print "test," rt
-        for (k in sum) {
-            printf "%s,%.3f\n", k, sum[k] / N
-        }
-    } ' ${TMP} > ${LOGFILE}
-rm ${TMP}
+}' ${TMP} > ${LOGFILE} ${TMP}
 EOF
 
 RUN chmod +x /home/benchmark.sh

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM ubuntu:22.04
+FROM ubuntu:20.04
 
 RUN apt-get update && apt-get install -y build-essential \
     sysbench mariadb-client vim
@@ -29,6 +29,7 @@ do
     sleep 1
 done
 
+echo "Prepare DB"
 sysbench oltp_read_write \
     --db-driver=mysql \
     --mysql-host=${SHNAME} \
@@ -38,30 +39,40 @@ sysbench oltp_read_write \
     --tables=${TABS} --table-size=${TBSIZE} \
     prepare
 
-RUNS=300
-CSV=${LOGDIR}/${RUNTIME}_benchmark.csv
-echo "test,threads,avg_tps" > ${CSV}
+echo "Prepare DB: Ready"
+
+#Warmup
+sysbench oltp_read_write \
+             --db-driver=mysql \
+             --mysql-host=${SHNAME} \
+             --mysql-user=${MYSQL_USER} \
+             --mysql-password=${MYSQL_PASSWORD} \
+             --mysql-db=${MYSQL_DATABASE} \
+             --threads="${THRDS}" --time=20 run > /dev/null
+
+RUNS=30
+CSV=${LOGDIR}/${THRDS}_${RUNTIME}_benchmark_results.csv
+echo "test,avg_tps" > ${CSV}
 for w in ${WRK}; do
-    for t in ${THRDS}; do
-        SUM=0
-        for((r=0; r<RUNS; r++)); do
-            TPS=$(sysbench oltp_${w} \
-                 --db-driver=mysql \
-                 --mysql-host=${SHNAME} \
-                 --mysql-user=${MYSQL_USER} \
-                 --mysql-password=${MYSQL_PASSWORD} \
-                 --mysql-db=${MYSQL_DATABASE} \
-                 --threads="${t}" --time=20 run \
-                 | awk '/transactions:/ {
-                    sub(/\(/, "", $(NF-2))
-                    sub(/\)/, "", $(NF-2))
-                    print $(NF-2)
-                    }')
-            SUM=$(awk -v S="${SUM}" -v T="${TPS}" 'BEGIN {print S+T}')
-        done
-        AVG=$(awk -v S="${SUM}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
-        echo "${w},${t},${AVG}" >> ${CSV}
+    SUM=0
+    for((r=0; r<RUNS; r++)); do
+        echo "Run:${r} - thread:${t} - work:${w}"
+        TPS=$(sysbench oltp_${w} \
+             --db-driver=mysql \
+             --mysql-host=${SHNAME} \
+             --mysql-user=${MYSQL_USER} \
+             --mysql-password=${MYSQL_PASSWORD} \
+             --mysql-db=${MYSQL_DATABASE} \
+             --threads="${THRDS}" --time=30 run \
+             | awk '/transactions:/ {
+                sub(/\(/, "", $(NF-2))
+                sub(/\)/, "", $(NF-2))
+                print $(NF-2)
+                }')
+        SUM=$(awk -v S="${SUM}" -v T="${TPS}" 'BEGIN {print S+T}')
     done
+    AVG=$(awk -v S="${SUM}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+    echo "${w},${AVG}" >> ${CSV}
 done
 EOF
 

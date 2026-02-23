@@ -19,8 +19,9 @@ LOGDIR=/home/logs
 if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
 echo "RUNTIME:${RUNTIME}"
 echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - RAND:${RAND}
-- LOGDIR:${LOGDIR} - RATIO-SET:${SETRATIO}"
-if [ -z "${RAND}" ]; then RAND=--randomize; fi
+- LOG:${LOG} - RATIO-SET:${SETRATIO} - #THREADs:${THREADS} - DATA-SIZE:${DSIZE}
+- #REQsPerTHREAD:${REQUESTS}"
+if [ -n "${RAND}" ]; then RAND=--randomize; fi
 CONNECT="-h ${SHNAME} -p 11211 --protocol=memcache_text"
 
 ##check server is ready
@@ -37,38 +38,39 @@ done
 
 if [ ${TRIES} -eq 0 ]; then echo "Server not found"; exit 1; fi 
 
-RUNS=50
-for i in ${SETRATIO}; do
-    GETS=0
-    SETS=0
-    for((R=0; R<RUNS; R++)); do
-        echo "Start RATIO: ${i} - Round: ${R}"
-        TEMPLOG=${LOGDIR}/${i}.json
-        RESFORMAT="--json-out-file=${TEMPLOG}"
-        TESTS="${RAND} -c ${CLN} -d 16384 --ratio=${i}:10"
+TEST="${RAND} -c ${CLN} -d ${DSIZE} -t ${THREADS} -n ${REQUESTS} --ratio=${SETRATIO}:10"
+memtier_benchmark ${CONNECT} ${TEST} > /dev/null
+memtier_benchmark ${CONNECT} ${TEST} > /dev/null
 
-        memtier_benchmark ${CONNECT} ${TESTS} ${RESFORMAT}
+GETS=0
+SETS=0
+RUNS=100
+for((R=0; R<RUNS; R++)); do
+    echo "Start Round: ${R}"
+    TEMPLOG=${LOGDIR}/${R}.json
+    RESFORMAT="--json-out-file=${TEMPLOG}"
 
-        GETOPS=$(jq -r '."ALL STATS".Gets["Ops/sec"]' "${TEMPLOG}")
-        SETOPS=$(jq -r '."ALL STATS".Sets["Ops/sec"]' "${TEMPLOG}")
+    memtier_benchmark ${CONNECT} ${TEST} ${RESFORMAT}
 
-        GETS=$(awk -v S="${GETS}" -v G="${GETOPS}" 'BEGIN {print S+G}')
-        SETS=$(awk -v S="${SETS}" -v V="${SETOPS}" 'BEGIN {print S+V}')
+    GETOPS=$(jq -r '."ALL STATS".Gets["Ops/sec"]' "${TEMPLOG}")
+    SETOPS=$(jq -r '."ALL STATS".Sets["Ops/sec"]' "${TEMPLOG}")
 
-        rm ${TEMPLOG}
-        echo "DONE RATIO: ${i} - Round: ${R}"
-    done
+    GETS=$(awk -v S="${GETS}" -v G="${GETOPS}" 'BEGIN {print S+G}')
+    SETS=$(awk -v S="${SETS}" -v V="${SETOPS}" 'BEGIN {print S+V}')
 
-    AVG_GETS=$(awk -v S="${GETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
-    AVG_SETS=$(awk -v S="${SETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
-    CSV=${LOGDIR}/${RUNTIME}_${i}.csv
-    awk -v rt="${RUNTIME}" -v avgs="${AVG_SETS}" -v avgg="${AVG_GETS}" '
-    BEGIN {
-        print "test," rt
-        print "SET," avgs
-        print "GET," avgg
-    }' > ${CSV}
+    rm ${TEMPLOG}
+    echo "DONE Round: ${R}"
 done
+
+AVG_GETS=$(awk -v S="${GETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+AVG_SETS=$(awk -v S="${SETS}" -v N="${RUNS}" 'BEGIN {printf "%.3f", S/N}')
+CSV=${LOGDIR}/${LOG}
+awk -v rt="${RUNTIME}" -v avgs="${AVG_SETS}" -v avgg="${AVG_GETS}" '
+BEGIN {
+    print "test," rt
+    print "SET," avgs
+    print "GET," avgg
+}' > ${CSV}
 EOF
 
 RUN chmod +x /home/benchmark.sh
