@@ -11,12 +11,11 @@ make install-testbin
 A Docker container will be spawned to build the Quark binaries
 and place them in the */usr/local/bin* directory. The expected binaries are
 *quark*, *qkernel.bin*, *vdso.so*, and in the case of Intel TDX, *shin.bin*.
-The Quark configuration file is placed at */etc/quark/*.
-To evaluate the implementation with the current HW, adjust the
-*CCMode:"..."* field accordingly. The options are:
+The Quark configuration file is placed at */etc/quark/*. Quark supports
+the following instances, specified in the configuration file *CCMode*-field:
 
 - **None**      – no confidentiality
-- **NormalEmu** – SW-enforced memory isolation
+- **NormalEmu** – nonConfidential, SW-enforced memory separation
 - **TDX**       – Intel TDX support
 - **SevSnp**    – AMD Sev/Snp support
 - **Cca**       – ARM CCA support
@@ -46,4 +45,11 @@ The placeholder *type* must be replaced with *mem* or *io* as appropriate, while
 the placeholder *foo* must be replaced with the name of the application,
 all in lowercase, e.g., *redis* for the Redis application benchmark.
 
-
+The results are presentened in the *csv* format. The final result is
+places in the *benchmarks/test-type/foo/logs/runtime/foo_benchmark_results.csv*.
+Current test runtime versions of Quark are Confidential Quark with TEE support, and
+nonConfidential Quark with SW-enforced memory separation. Per default, the benchmarks
+run with Quark enabled TEE support, to try *NormalEmu* adjust the test command:
+```
+make test-type-foo RUNTIME=quark-emcc
+```
