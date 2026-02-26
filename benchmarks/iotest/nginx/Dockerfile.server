@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1.4
+FROM nginx:1.29.0
+
+WORKDIR /usr/share/nginx/html
+
+RUN head -c 16K </dev/urandom > tfile.html
+
+CMD ["nginx", "-g", "daemon off;"]

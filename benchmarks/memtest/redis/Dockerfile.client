@@ -1,0 +1,74 @@
+# syntax=docker/dockerfile:1.4
+FROM redis:8.0
+
+RUN apt-get update && apt-get install -y gawk vim
+
+WORKDIR /home
+
+COPY <<'EOF' /home/benchmark.sh
+#!/bin/bash
+
+#sanity check
+if [ -z "${RUNTIME}" ]; then RUNTIME=runc; fi
+echo "RUNTIME:${RUNTIME}"
+echo "Arguments: SRV:${SHNAME} - #CLIENTS:${CLN} - #REQs:${REQS} - DATA_SIZE:${DSIZE}- LOG:/home/logs/${LOG}"
+TESTS="-t set,get"
+CONNECT="-h ${SHNAME} -p 6379"
+LAST="-c ${CLN} -n ${REQS} -d ${DSIZE}"
+FORMAT="--csv"
+LOGFILE=/home/logs/${LOG}
+
+#check server is ready
+PING="-c 1 -n 1 -t ping --csv"
+TRIES=1000
+while [ ${TRIES} -gt 0 ]; do
+    ALIVE=$(redis-benchmark ${CONNECT} ${PING} 2>&1)
+    if ! grep -q "Could not" <<< "${ALIVE}"; then
+        echo "Ping: ${ALIVE}"
+        break
+    fi
+    TRIES=$((TRIES - 1))
+    sleep 1
+done
+
+if [ "${TRIES}" -eq 0 ]; then
+        echo "Error: Redis not ALIVE"
+        exit 1
+fi
+
+#Warm up - discard result
+redis-benchmark ${CONNECT} ${TESTS} ${LAST} > /dev/null
+redis-benchmark ${CONNECT} ${TESTS} ${LAST} > /dev/null
+
+RUNS=200
+TMP=/home/logs/tmp_res.csv
+for((R=0; R<RUNS; R++)); do
+    echo "Test Round:${R} - Start"
+    redis-benchmark ${CONNECT} ${TESTS} ${LAST} ${FORMAT} 2>/dev/null | \
+    awk -F',' '
+        NR>1 {
+            gsub(/"/,"",$1)
+            gsub(/"/,"",$2)
+            if ($2 ~ /^[0-9.]+$/)
+                print $1 "," $2
+        }
+    ' >> ${TMP}
+done
+
+awk -F',' -v rt="${RUNTIME}" '
+{
+    sum[$1] += $2
+    count[$1]++
+}
+END {
+    print "test," rt
+    for (k in sum) {
+        if (count[k] > 0)
+            printf "%s,%.3f\n", k, sum[k] / count[k]
+    }
+}' ${TMP} > ${LOGFILE} ${TMP}
+EOF
+
+RUN chmod +x /home/benchmark.sh
+
+CMD ["/bin/bash", "/home/benchmark.sh"]
